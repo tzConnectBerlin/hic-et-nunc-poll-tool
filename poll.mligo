@@ -2,6 +2,8 @@ type poll_id = string
 type poll_option = nat
 type votes = ((address * poll_id), poll_option) big_map
 type totals = (poll_option, nat) map
+type super_admin = address
+type administrator = (address, unit) map
 
 
 type poll_metadata = {
@@ -22,7 +24,8 @@ type polls = (poll_id, poll) big_map
 type storage = {
     polls : polls;
     votes : votes;
-    administrator : address;
+    super_admin : super_admin;
+    administrator : administrator;
 }
 
 type return = (operation list) * storage
@@ -38,12 +41,19 @@ type vote_arg = {
     vote : poll_option;
 }
 
+type add_remove_administrator_arg = address
 
-let check_if_administrator (administrator : address) : unit =
-    if Tezos.sender <> administrator then
-        ( failwith "error_NOT_AN_ADMINISTRATOR" : unit )
+let check_if_super_admin (super_admin : super_admin) : unit =
+    if Tezos.sender <> super_admin then
+        ( failwith "error_NOT_AN_SUPER_ADMIN" : unit )
     else
     unit
+
+let check_if_administrator (administrator : administrator) : unit =
+    if Map.mem Tezos.sender administrator then
+        unit
+    else
+    ( failwith "error_NOT_AN_ADMINISTRATOR" : unit )
 
 let create_poll_internal (create_poll_arg, polls : create_poll_arg * polls) : polls =
     if Big_map.mem create_poll_arg.poll_id polls then
@@ -78,6 +88,12 @@ let check_if_vote_option_is_valid (vote, num_options : poll_option * poll_option
         ( failwith "error_VOTE_OPTION_INVALID" : unit )
     else unit
 
+let add_administrator_internal (new_admin, administrator : address * administrator) : administrator =
+    Map.update (new_admin) (Some (unit)) administrator
+
+let remove_administrator_internal (admin_to_remove, administrator : address * administrator) : administrator =
+    Map.remove admin_to_remove administrator
+
 let create_poll ( create_poll_arg, storage : create_poll_arg * storage ) : return =
     let _ = check_if_administrator storage.administrator in
     let polls = create_poll_internal (create_poll_arg, storage.polls) in
@@ -92,20 +108,38 @@ let vote ( vote_arg, storage : vote_arg * storage ) : return =
     let _ = check_if_vote_option_is_valid (vote_arg.vote, metadata.num_options) in
     let votes = update_votes_map (vote_arg, storage.votes) in
     let storage = {storage with votes = votes} in
-    (([] : operation list), storage)   
+    (([] : operation list), storage) 
+
+let add_administrator ( add_remove_administrator_arg, storage : add_remove_administrator_arg * storage ) : return =
+    let _ = check_if_super_admin storage.super_admin in
+    let administrator = add_administrator_internal (add_remove_administrator_arg, storage.administrator) in
+    let storage = {storage with administrator = administrator} in
+    (([] : operation list), storage) 
+
+let remove_administrator ( add_remove_administrator_arg, storage : add_remove_administrator_arg * storage ) : return =
+    let _ = check_if_super_admin storage.super_admin in
+    let administrator = remove_administrator_internal (add_remove_administrator_arg, storage.administrator) in
+    let storage = {storage with administrator = administrator} in  
+    (([] : operation list), storage) 
 
  type parameter =
     | CreatePoll of create_poll_arg
     | Vote of vote_arg
+    | AddAdministrator of add_remove_administrator_arg
+    | RemoveAdministrator of add_remove_administrator_arg
       
 let main (action, s : parameter * storage) : return = 
     (match action with
     | CreatePoll (create_poll_arg) -> create_poll (create_poll_arg, s)
     | Vote (vote_arg) -> vote (vote_arg, s)
+    | AddAdministrator (add_remove_administrator_arg) -> add_administrator (add_remove_administrator_arg, s)
+    | RemoveAdministrator (add_remove_administrator_arg) -> remove_administrator (add_remove_administrator_arg, s)
     )
 
 let init_storage : storage = {
     polls = ( Big_map.empty : polls );
     votes = ( Big_map.empty : votes );
-    administrator = Tezos.sender;
+    super_admin = Tezos.sender;
+    administrator = ( Map.empty : administrator )
 }
+
