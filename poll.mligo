@@ -1,4 +1,6 @@
 type poll_id = string
+type title = string
+type category = string
 type poll_option = nat
 type votes = ((address * poll_id), poll_option) big_map
 type totals = (poll_option, nat) map
@@ -10,6 +12,8 @@ type poll_metadata = {
     start_date : timestamp;
     end_date : timestamp;
     num_options : nat;
+    title : title;
+    category : category;
 }
 
 type poll = {
